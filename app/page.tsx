@@ -1,7 +1,12 @@
+import CallNotification from "@/components/CallNotification";
+import ListOnlineUsers from "@/components/ListOnlineUsers";
 import Image from "next/image";
 
 export default function Home() {
   return (
-    <div>Chat</div>
+    <div>
+      <ListOnlineUsers/>
+      <CallNotification/>
+    </div>
   );
 }

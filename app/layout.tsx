@@ -5,6 +5,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import Navbar from "@/components/ui/layout/Navbar";
 import Container from "@/components/ui/layout/Container";
 import SocketProvider from "@/providers/SocketProvider";
+import { cn } from "@/lib/utils";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -17,11 +18,12 @@ const geistMono = localFont({
   weight: "100 900",
 });
 
+
 export const metadata: Metadata = {
   title: "Zoom",
   description: "Video Call",
 };
-
+// className={`${geistSans.variable} ${geistMono.variable} antialiased`}
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -31,7 +33,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
           <SocketProvider>
             <main className="flex flex-col min-h-screen bg-secondary">
