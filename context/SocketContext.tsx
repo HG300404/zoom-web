@@ -1,12 +1,19 @@
-import { OngoingCall, Participants, SocketUser } from '@/types';
+import {OngoingCall, Participants, PeerData, SocketUser} from '@/types';
 import { useUser } from '@clerk/nextjs';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import {on} from "socket.io-client/build/esm-debug/on";
+import Peer, {SignalData} from 'simple-peer'
+import onHangup from "@/socket-events/onHangup";
+
 interface iSocketContext {
     onlineUsers: SocketUser[] | null
     ongoingCall: OngoingCall | null
     localStream: MediaStream | null
+    peer: PeerData | null
     handleCall: (user: SocketUser) => void
+    handleJoinCall: (ongoingCall: OngoingCall) => void
+    handleHangup: (data: {ongoingCall: OngoingCall, isEmitHangup?: boolean}) => void
 }
 
 export const SocketContext = createContext<iSocketContext | null>(null)
@@ -20,6 +27,8 @@ export const SocketContextProvider = ({children}:{children:React.ReactNode}) =>{
     const [onlineUsers, setOnlineUsers] = useState<SocketUser[] | null>(null);
     const [ongoingCall, setOngoingCall] = useState<OngoingCall | null>(null)
     const [localStream, setLocalStream] = useState<MediaStream | null > (null)
+    const [peer, setPeer] = useState<PeerData | null>(null)
+    const [isCallEnd, setIsCallEnd] = useState(false);
 
     const currentSocketUser = onlineUsers?.find(onlineUser => onlineUser.userId === user?.id)
 
@@ -50,6 +59,7 @@ export const SocketContextProvider = ({children}:{children:React.ReactNode}) =>{
     },[localStream])
 
     const handleCall = useCallback(async (user: SocketUser) => {
+        setIsCallEnd(false)
         if (!currentSocketUser || !socket) return;
 
         const stream = await getMediaStream()
@@ -74,8 +84,139 @@ export const SocketContextProvider = ({children}:{children:React.ReactNode}) =>{
             isRinging: true
         })
     }, [socket, user, ongoingCall])
-   
     console.log('onlineUsers', onlineUsers)
+
+    const handleHangup = useCallback((data: { ongoingCall?: OngoingCall | null, isEmitHangup?: boolean }) => {
+        if (socket && user && data.ongoingCall && data.isEmitHangup) {
+            socket.emit('hangup', {
+                ongoingCall: data.ongoingCall,
+                userHangingupId: user.id,
+            });
+        }
+
+        setOngoingCall(null);
+        setPeer(null);
+
+        if (localStream) {
+            localStream.getTracks().forEach((track) => track.stop());
+            setLocalStream(null);
+        }
+        setIsCallEnd(true)
+    }, [socket, user, localStream]);
+
+
+    const createPeer = useCallback((stream: MediaStream, initiator: boolean) => {
+        const iceServers: RTCIceServer[] = [
+            {
+                urls: [
+                    "stun:stun.1.google.com:19302",
+                    "stun:stun1.l.google.com:19302",
+                    "stun:stun2.l.google.com:19302",
+                    "stun:stun3.l.google.com:19302",
+                ]
+            }
+        ];
+
+        const peer = new Peer({
+            stream,
+            initiator,
+            trickle: true,
+            config: { iceServers }
+        });
+
+        peer.on('stream', (stream) => {
+            setPeer((prevPeer) => {
+                if (prevPeer) {
+                    return { ...prevPeer, stream };
+                }
+                return prevPeer;
+            });
+        });
+
+        peer.on('error', console.error);
+        peer.on('close', () => handleHangup({}));
+
+        const rtcPeerConnection: RTCPeerConnection = (peer as any)._pc;
+
+        rtcPeerConnection.oniceconnectionstatechange = async () => {
+            if (
+                rtcPeerConnection.iceConnectionState === 'disconnected' ||
+                rtcPeerConnection.iceConnectionState === 'failed'
+            ) {
+                handleHangup({});
+            }
+        };
+        return peer;
+
+    }, [ongoingCall, setPeer]);
+
+    const completePeerConnection = useCallback(async (connectionData: {sdp:SignalData, ongoingCall: OngoingCall, isCaller: boolean})=>{
+        if(!localStream){
+            console.log("Missing the localStream");
+            return
+        }
+        if (peer) {
+            peer.peerConnection?.signal(connectionData.sdp);
+            return;
+        }
+
+        const newPeer = createPeer(localStream, true);
+
+        setPeer({
+            peerConnection: newPeer,
+            participantUser: connectionData.ongoingCall.participants.receiver,
+            stream: undefined,
+        });
+
+        newPeer.on('signal', async (data: SignalData) => {
+            if (socket) {
+                // emit offer
+                socket.emit('webrtcSignal', {
+                    sdp: data,
+                    ongoingCall,
+                    isCaller: true,
+                });
+            }
+        });
+
+    },[localStream, createPeer, peer, ongoingCall])
+
+    const handleJoinCall = useCallback(async (ongoingCall : OngoingCall) => {
+        setIsCallEnd(false)
+        //join call
+        setOngoingCall(prev => {
+            if(prev){
+                return {...prev, isRinging:false}
+            }
+            return prev;
+        })
+        const stream = await getMediaStream()
+        if (!stream) {
+            console.log("Could not get stream in handleCall")
+            return
+        }
+
+        const newPeer = createPeer(stream, true)
+
+        setPeer({
+            peerConnection: newPeer,
+            participantUser: ongoingCall.participants.caller,
+            stream: undefined,
+        });
+
+        newPeer.on("signal", async (data: SignalData) =>{
+            if(socket){
+                //emit offer
+                socket.emit('webrtcSignal', {
+                    sdp: data,
+                    ongoingCall,
+                    isCaller: false
+                });
+            }
+        })
+
+    }, [socket, currentSocketUser])
+
     //khoi tao socket
     useEffect(() => {
         const newSocket = io();
@@ -128,10 +269,15 @@ export const SocketContextProvider = ({children}:{children:React.ReactNode}) =>{
     useEffect(() => {
         if (!socket || !isSocketConnected) return 
         socket.on('incomingCall', onIncomingCall)
+        socket.on('webrtcSignal', completePeerConnection)
+        socket.on('hangup', handleHangup)
+
         return () =>{
             socket.off('incomingCall', onIncomingCall)
+            socket.off('webrtcSignal', completePeerConnection)
+            socket.off('hangup', handleHangup)
         }
-    }, [socket, isSocketConnected, user, onIncomingCall])
+    }, [socket, isSocketConnected, user, onIncomingCall, completePeerConnection])
     
     
     
@@ -139,7 +285,10 @@ export const SocketContextProvider = ({children}:{children:React.ReactNode}) =>{
         onlineUsers,
         ongoingCall,
         localStream,
-        handleCall
+        peer,
+        handleCall,
+        handleJoinCall,
+        handleHangup
     }}>
         {children}
     </SocketContext.Provider>
