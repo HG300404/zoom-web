@@ -40,6 +40,13 @@ const VideoCall = () => {
 
     const isOnCall = localStream && peer && ongoingCall ? true : false
 
+    if (isCallEnded) {
+        return <div className="mt-5 text-rose-500 text-center">Call Ended</div>
+    }
+
+    if (!localStream && !peer) return;
+
+
     return (
         <div>
             <div className="mt-4 relative">
