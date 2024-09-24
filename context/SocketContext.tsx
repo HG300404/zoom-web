@@ -61,7 +61,7 @@ export const SocketContextProvider = ({children}:{children:React.ReactNode}) =>{
     },[localStream])
 
     const handleCall = useCallback(async (user: SocketUser) => {
-        setIsCallEnd(false)
+        setIsCallEnded(false)
         if (!currentSocketUser || !socket) return;
 
         const stream = await getMediaStream()
@@ -103,7 +103,7 @@ export const SocketContextProvider = ({children}:{children:React.ReactNode}) =>{
             localStream.getTracks().forEach((track) => track.stop());
             setLocalStream(null);
         }
-        setIsCallEnd(true)
+        setIsCallEnded(true)
     }, [socket, user, localStream]);
 
 
@@ -184,7 +184,7 @@ export const SocketContextProvider = ({children}:{children:React.ReactNode}) =>{
     },[localStream, createPeer, peer, ongoingCall])
 
     const handleJoinCall = useCallback(async (ongoingCall : OngoingCall) => {
-        setIsCallEnd(false)
+        setIsCallEnded(false)
         //join call
         setOngoingCall(prev => {
             if(prev){
@@ -195,6 +195,8 @@ export const SocketContextProvider = ({children}:{children:React.ReactNode}) =>{
         const stream = await getMediaStream()
         if (!stream) {
             console.log("Could not get stream in handleCall")
+            handleHangup(
+                { ongoingCall: ongoingCall ? ongoingCall : undefined, isEmitHangup: true})
             return
         }
 

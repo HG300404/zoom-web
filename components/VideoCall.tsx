@@ -7,7 +7,7 @@ import {MdMic, MdMicOff, MdVideocam, MdVideocamOff} from "react-icons/md";
 
 
 const VideoCall = () => {
-    const { localStream, peer, ongoingCall,handleHangup } = useSocket();
+    const { localStream, peer, ongoingCall ,handleHangup, isCallEnded } = useSocket();
     const [isMicOn, setIsMicOn] = useState(true);
     const [isVidOn, setIsVidOn] = useState(true);
 
@@ -49,7 +49,7 @@ const VideoCall = () => {
 
     return (
         <div>
-            <div className="mt-4 relative">
+            <div className="mt-4 relative max-w-[800px] mx-auto">
                 {localStream && (
                     <VideoContainer
                         stream={localStream}
