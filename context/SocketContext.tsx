@@ -2,9 +2,8 @@ import {OngoingCall, Participants, PeerData, SocketUser} from '@/types';
 import { useUser } from '@clerk/nextjs';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import {on} from "socket.io-client/build/esm-debug/on";
 import Peer, {SignalData} from 'simple-peer'
-import onHangup from "@/socket-events/onHangup";
+//import onHangup from "@/socket-events/onHangup";
 
 interface iSocketContext {
     onlineUsers: SocketUser[] | null
